@@ -5,6 +5,7 @@ from tensorflow.keras.preprocessing.image import img_to_array
 from PIL import ImageFont, ImageDraw, Image
 import paho.mqtt.client as mqtt
 import json
+import time
 
 # MQTT Configuration
 BROKER = "localhost"  # Đổi thành địa chỉ IP của broker nếu cần
@@ -17,8 +18,8 @@ client.connect(BROKER, PORT, 60)
 
 # Load mô hình và font chữ
 face_classifier = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-classifier = load_model('C:/Users/manhh/Downloads/emotion recognition/emotion-detection/emotion_detection.h5')
-class_labels = ['Giận dữ', 'Ghê sợ', 'Sợ hãi', 'Hạnh phúc', 'Buồn', 'Bất ngờ', 'Trung lập']
+classifier = load_model('C:/Users/manhh/Downloads/emotion detect/emotion_detection.h5')
+class_labels = ['Angry', 'Disgusted', 'Fear', 'Happy', 'Sad', 'Surprised', 'Neutral']
 font_path = "./arial.ttf"
 
 try:
@@ -37,8 +38,10 @@ def apply_clahe(gray_image):
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     return clahe.apply(gray_image)
 
-# Biến lưu trữ cảm xúc trước đó
+# Biến lưu trữ cảm xúc trước đó và thời gian gửi lần cuối
 previous_emotion = None
+last_sent_time = 0
+delay_seconds = 2  # Thời gian trễ giữa các lần gửi cảm xúc
 
 # Mở webcam
 cap = cv2.VideoCapture(0)
@@ -74,15 +77,18 @@ while True:
         preds = classifier.predict(roi, verbose=0)[0]
         label = class_labels[np.argmax(preds)]
 
-        # Kiểm tra xem cảm xúc có thay đổi không
-        if (label != previous_emotion) and (label):
-            # Cập nhật cảm xúc trước đó
+        # Kiểm tra xem cảm xúc có thay đổi và đủ thời gian trễ chưa
+        current_time = time.time()
+        if label != previous_emotion and label and (current_time - last_sent_time > delay_seconds):
+            # Cập nhật cảm xúc trước đó và thời gian gửi
             previous_emotion = label
+            last_sent_time = current_time
 
-           # Gửi cảm xúc dưới dạng JSON
-            emotion_data = {"emotion": label}  # Đặt cảm xúc vào một đối tượng JSON
-            client.publish(TOPIC, json.dumps(emotion_data))  # Chuyển đối tượng thành chuỗi JSON
+            # Gửi cảm xúc dưới dạng JSON
+            emotion_data = {"emotion": label}
+            client.publish(TOPIC, json.dumps(emotion_data))
             print(f"Sent emotion: {label}")
+
         # Vẽ nhãn cảm xúc lên khung hình
         img_pil = Image.fromarray(frame)
         draw = ImageDraw.Draw(img_pil)

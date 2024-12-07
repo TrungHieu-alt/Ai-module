@@ -1,19 +1,17 @@
 import paho.mqtt.client as mqtt
 import json
-import serial
+import serial  # Đảm bảo là pyserial được import đúng
 import time
 
 # --------------------- Configuration ---------------------
-
 # MQTT Configuration
 BROKER = "localhost"  # Change to your broker's IP if needed
 PORT = 1883
 TOPIC = "emotion_topic"
 
 # Serial Configuration
-SERIAL_PORT = "COM3"  # Replace with your serial port (e.g., COM3 on Windows or /dev/ttyUSB0 on Linux)
+SERIAL_PORT = "COM7"  # Replace with your serial port (e.g., COM3 on Windows or /dev/ttyUSB0 on Linux)
 BAUD_RATE = 9600      # Ensure this matches the baud rate of your serial device
-
 # ----------------------------------------------------------
 
 # Initialize Serial Connection
@@ -77,34 +75,34 @@ def on_message(client, userdata, msg):
         # Determine new light settings based on emotion
         new_light_settings = {}
 
-        if emotion == "Hạnh phúc":
+        if emotion == "Happy":
             new_light_settings = {
                 "brightness": 255,   # Maximum brightness
-                "color": "yellow",   # Bright yellow color
+                "color": "green",   # Bright yellow color
                 "status": "on"
             }
-        elif emotion == "Buồn":
+        elif emotion == "Sad":
             new_light_settings = {
                 "brightness": 50,    # Low brightness
-                "color": "blue",     # Blue color
+                "color": "yellow",     # Blue color
                 "status": "on"
             }
-        elif emotion == "Giận dữ":
+        elif emotion == "Angry":
             new_light_settings = {
                 "brightness": 255,   # Maximum brightness
                 "color": "red",      # Red color
-                "status": "blink"    # Blink status
+                "status": "on"    # Blink status
             }
-        elif emotion == "Bất ngờ":
+        elif emotion == "Surprise":
             new_light_settings = {
                 "brightness": 255,   # Maximum brightness
-                "color": "purple",   # Purple color
+                "color": "red",   # Purple color
                 "status": "on"
             }
-        elif emotion == "Trung lập":
+        elif emotion == "Neutral":
             new_light_settings = {
                 "brightness": 100,   # Medium brightness
-                "color": "white",    # White color
+                "color": "blue",    # White color
                 "status": "on"
             }
         else:
