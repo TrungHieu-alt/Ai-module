@@ -1,4 +1,3 @@
-
 # Emotion Detection Project
 
 This project implements a real-time emotion detection system using AI models and MQTT communication. The setup includes:
@@ -63,6 +62,11 @@ python printResult.py
 
 - **`emotion_demo.py`**: Implements the AI model to detect emotions using a pre-trained model (`emotion_detection.h5`) and Haar Cascade classifier (`haarcascade_frontalface_default.xml`). Publishes results via MQTT.
 
+  **Note:** Update the absolute path to the model in the script if needed:
+  ```python
+  classifier = load_model('C:/Users/manhh/Downloads/emotion detect/emotion_detection.h5')
+  ```
+
 - **`printResult.py`**: Subscribes to the MQTT topic and prints the detected emotions.
 
 - **`emotion_detection.h5`**: Pre-trained model for emotion classification.
@@ -94,4 +98,5 @@ python printResult.py
 
 ## License
 
-This project is licensed under the MIT License. Feel free to use and modify it as needed.
+ Feel free to use and modify this file as needed.
+
