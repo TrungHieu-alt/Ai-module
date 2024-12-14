@@ -1,6 +1,6 @@
 import paho.mqtt.client as mqtt
 import json
-import serial  # Đảm bảo là pyserial được import đúng
+import serial
 import time
 
 # --------------------- Configuration ---------------------
@@ -10,7 +10,7 @@ PORT = 1883
 TOPIC = "emotion_topic"
 
 # Serial Configuration
-SERIAL_PORT = "COM7"  # Replace with your serial port (e.g., COM3 on Windows or /dev/ttyUSB0 on Linux)
+SERIAL_PORT = "COM7"  # Replace with your serial port
 BAUD_RATE = 9600      # Ensure this matches the baud rate of your serial device
 # ----------------------------------------------------------
 
@@ -21,7 +21,7 @@ try:
     print(f"Connected to serial port {SERIAL_PORT} at {BAUD_RATE} baud.")
 except serial.SerialException as e:
     print(f"Error connecting to serial port: {e}")
-    ser = None  # Set to None to handle absence of serial connection gracefully
+    ser = None  # Handle absence of serial connection gracefully
 
 # Variable to store current light settings
 current_light_settings = {
@@ -53,16 +53,24 @@ def on_message(client, userdata, msg):
         print(f"Decoded message: {decoded_msg}")
 
         # Check if the message is empty or invalid
-        if decoded_msg == "{}" or not decoded_msg:
-            print("Received empty or invalid emotion, skipping.")
+        if not decoded_msg:
+            print("Received empty or invalid message, skipping.")
             return
 
         # Parse JSON
         try:
             emotion_data = json.loads(decoded_msg)
-            emotion = emotion_data.get("emotion", "").strip()  # Remove any whitespace
         except json.JSONDecodeError as e:
             print(f"Error decoding JSON: {e}")
+            return
+
+        # Validate fields in the message
+        source = emotion_data.get("source")
+        msg_type = emotion_data.get("type")
+        emotion = emotion_data.get("emotion", "")  # Ensure emotion is a string
+
+        if source != "ai" or msg_type != "emotion":
+            print(f"Message source/type invalid: source={source}, type={msg_type}. Skipping.")
             return
 
         # Validate emotion
@@ -78,31 +86,31 @@ def on_message(client, userdata, msg):
         if emotion == "Happy":
             new_light_settings = {
                 "brightness": 255,   # Maximum brightness
-                "color": "green",   # Bright yellow color
+                "color": "green",   # Bright green color
                 "status": "on"
             }
         elif emotion == "Sad":
             new_light_settings = {
                 "brightness": 50,    # Low brightness
-                "color": "yellow",     # Blue color
+                "color": "blue",     # Blue color
                 "status": "on"
             }
         elif emotion == "Angry":
             new_light_settings = {
                 "brightness": 255,   # Maximum brightness
                 "color": "red",      # Red color
-                "status": "on"    # Blink status
+                "status": "on"
             }
-        elif emotion == "Surprise":
+        elif emotion == "Surprised":
             new_light_settings = {
                 "brightness": 255,   # Maximum brightness
-                "color": "red",   # Purple color
+                "color": "yellow",   # Yellow color
                 "status": "on"
             }
         elif emotion == "Neutral":
             new_light_settings = {
                 "brightness": 100,   # Medium brightness
-                "color": "blue",    # White color
+                "color": "white",    # White color
                 "status": "on"
             }
         else:
