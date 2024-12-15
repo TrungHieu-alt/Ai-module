@@ -77,7 +77,7 @@ python printResult.py
 
 ## File Details
 
-- **`emotion_demo.py`**:
+- **`emotion_demo.py`**: 
   - Loads a pre-trained model (`emotion_detection.h5`) and uses a Haar Cascade classifier (`haarcascade_frontalface_default.xml`) for face detection.
   - Publishes results via MQTT.
   - Update the absolute path to the model if necessary:
@@ -85,9 +85,19 @@ python printResult.py
     classifier = load_model('C:/Users/manhh/Downloads/emotion detect/emotion_detection.h5')
     ```
 
-- **`printResult.py`**:
-  - Subscribes to the MQTT topic (e.g., `emotion/topic`) to print detected emotions.
-  - Also receives control commands via the MQTT WebSocket port **8083** to execute specific tasks.
+- **`printResult.py`**: 
+  - Subscribes to two MQTT brokers:
+    - Local MQTT broker (TCP, port **1883**).
+    - WebSocket MQTT broker (port **8083**).
+  - Dynamically switches between local MQTT and WebSocket brokers based on control commands.
+    - **Control Commands:** Received via WebSocket, with key `ai` to toggle AI mode:
+      - `ai: true`: Switches to local MQTT (1883) for emotion messages.
+      - `ai: false`: Switches back to WebSocket (8083).
+  - Forwards messages from WebSocket broker to local MQTT when in WebSocket mode.
+  - Example processing flow:
+    1. Receives JSON messages containing `emotion` data or control commands.
+    2. Decodes and processes messages based on their source.
+    3. Prints processed emotions or logs forwarded messages.
 
 - **`emotion_detection.h5`**: Pre-trained model for emotion classification.
 
@@ -127,9 +137,10 @@ python printResult.py
 
 **From `printResult.py`:**
 ```
-Detected emotion: Happy
-Detected emotion: Sad
-Received control command: Reset
+[MQTT LOCAL] Message received on emotion_topic: {"emotion": "Happy"}
+[MQTT LOCAL] Processed Emotion: Happy
+[MQTT WS] Forwarded message to MQTT local: {"emotion": "Neutral"}
+[MQTT WS] Switching to MQTT (1883) mode (ai = true).
 ```
 
 ---
