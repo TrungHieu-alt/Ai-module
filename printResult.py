@@ -2,6 +2,7 @@ import json
 import time
 import threading
 import paho.mqtt.client as mqtt
+import serial
 
 # --------------------- Configuration ---------------------
 # MQTT Configuration (TCP - Local)
@@ -102,8 +103,97 @@ def setup_mqtt_ws():
         print(f"Error connecting to MQTT broker (WS): {e}")
         return None
 
+
+
+# -------------------- Serial Functions --------------------
+
+def map_emotion_to_color_brightness(emotion):
+    """
+    Ánh xạ cảm xúc về màu sắc và cường độ sáng.
+    """
+    emotion_mapping = {
+        'Angry': {'color': {'r': 255, 'g': 0, 'b': 0}, 'brightness': 100},
+        'Disgusted': {'color': {'r': 0, 'g': 255, 'b': 0}, 'brightness': 80},
+        'Fear': {'color': {'r': 0, 'g': 0, 'b': 255}, 'brightness': 70},
+        'Happy': {'color': {'r': 255, 'g': 255, 'b': 0}, 'brightness': 90},
+        'Sad': {'color': {'r': 0, 'g': 0, 'b': 128}, 'brightness': 60},
+        'Surprised': {'color': {'r': 255, 'g': 105, 'b': 180}, 'brightness': 85},
+        'Neutral': {'color': {'r': 255, 'g': 255, 'b': 255}, 'brightness': 50}
+    }
+    return emotion_mapping.get(emotion, {'color': {'r': 255, 'g': 255, 'b': 255}, 'brightness': 50})
+
+def send_color(color, ser):
+    """
+    Gửi dữ liệu màu sắc qua cổng serial.
+    Định dạng: COLOR:r,g,b\n
+    """
+    color_str = f"COLOR:{color['r']},{color['g']},{color['b']}\n"
+    ser.write(color_str.encode())
+    print(f"[Serial] Sent color: {color_str.strip()}")
+
+def send_brightness(brightness, ser):
+    """
+    Gửi dữ liệu cường độ sáng qua cổng serial.
+    Định dạng: BRIGHTNESS:value\n
+    """
+    brightness_str = f"BRIGHTNESS:{brightness}\n"
+    ser.write(brightness_str.encode())
+    print(f"[Serial] Sent brightness: {brightness_str.strip()}")
+
+
+# Hàm gửi chính
+def process_decoded_data_serial(decoded_data, ser):
+    """
+    Xử lý dữ liệu đã decode và gửi qua serial.
+    """
+    if not decoded_data:
+        print("[Serial] Invalid data received.")
+        return
+
+    data_type = decoded_data.get("type")
+    value = decoded_data.get("value")
+
+    if data_type == "color":
+        send_color(value, ser)
+    elif data_type == "brightness":
+        send_brightness(value, ser)
+    elif data_type == "emotion":
+        mapped = map_emotion_to_color_brightness(value)
+        send_color(mapped['color'], ser)
+        send_brightness(mapped['brightness'], ser)
+    else:
+        print(f"[Serial] Unsupported data type: {data_type}")
+
+import queue
+
+def serial_sender(ser, q):
+    """
+    Luồng xử lý gửi dữ liệu qua serial từ hàng đợi.
+    """
+    while True:
+        try:
+            decoded_data = q.get()
+            if decoded_data is None:
+                break  # Kết thúc luồng
+            process_decoded_data_serial(decoded_data, ser)
+        except Exception as e:
+            print(f"[Serial Sender] Error: {e}")
+
 # --------------------- Main Execution --------------------
 if __name__ == "__main__":
+
+    # Khởi tạo cổng serial COM7 với baudrate 9600 (có thể thay đổi theo yêu cầu)
+    try:
+        ser = serial.Serial('COM7', 9600, timeout=1)
+        time.sleep(2)  # Chờ cổng serial khởi động
+        print("Connected to serial port COM7.")
+    except serial.SerialException as e:
+        print(f"Error opening serial port COM7: {e}")
+        ser = None
+
+    # Tạo hàng đợi để truyền dữ liệu từ MQTT sang Serial
+    q = queue.Queue()
+
     # MQTT local client
     mqtt_client = setup_mqtt_local()
     if mqtt_client:
@@ -117,6 +207,12 @@ if __name__ == "__main__":
         ws_mqtt_thread = threading.Thread(target=ws_mqtt_client.loop_forever)
         ws_mqtt_thread.daemon = True
         ws_mqtt_thread.start()
+        
+    # Khởi động luồng gửi serial nếu cổng serial đã kết nối
+    if ser:
+        serial_thread = threading.Thread(target=serial_sender, args=(ser, q))
+        serial_thread.daemon = True
+        serial_thread.start()    
 
     try:
         while True:
@@ -130,3 +226,8 @@ if __name__ == "__main__":
         if ws_mqtt_client:
             ws_mqtt_client.disconnect()
             print("Disconnected from MQTT (WebSocket).")
+        # Đóng cổng serial
+        if ser:
+            q.put(None)  # Đặt None để kết thúc luồng serial
+            ser.close()
+            print("Closed serial port COM7.")
