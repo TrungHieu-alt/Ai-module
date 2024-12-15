@@ -1,32 +1,52 @@
 # Emotion Detection Project
 
-This project implements a real-time emotion detection system using AI models and MQTT communication. The setup includes:
+This project implements a real-time emotion detection system using AI models and MQTT communication. It includes:
 
-- **`emotion_demo.py`**: Main AI script for emotion detection.
-- **`printResult.py`**: Script to receive and display results through MQTT.
+- **`emotion_demo.py`**: Core AI script for emotion detection.
+- **`printResult.py`**: Script to display results and handle control commands via MQTT.
+
+---
+
+## Table of Contents
+
+1. [Prerequisites](#prerequisites)
+2. [Usage](#usage)
+   - [Start Mosquitto Broker](#1-start-mosquitto-broker)
+   - [Run the Emotion Detection Script](#2-run-the-emotion-detection-script)
+   - [Run the Result Display Script](#3-run-the-result-display-script)
+3. [File Details](#file-details)
+4. [Troubleshooting](#troubleshooting)
+5. [License](#license)
 
 ---
 
 ## Prerequisites
 
 1. **Python Installation**
-   Ensure Python (>=3.7) is installed on your system. You can download Python from [python.org](https://www.python.org/).
+   Ensure Python (>=3.7) is installed. [Download Python](https://www.python.org/).
 
 2. **Mosquitto Installation**
-   Install Mosquitto MQTT broker:
-   - **Windows**: Download and install from [Eclipse Mosquitto](https://mosquitto.org/download/).
-   - **Linux** (Ubuntu/Debian):
+   Install Mosquitto MQTT broker version **2.0.12**.  
+   > **Note:** The latest versions may not support WebSocket communication. Version 2.0.12 is confirmed to work.
+
+   - **Windows**: [Download Mosquitto 2.0.12](https://mosquitto.org/download/).
+   - **Linux**:
      ```bash
      sudo apt update
-     sudo apt install -y mosquitto mosquitto-clients
+     sudo apt install -y mosquitto=2.0.12 mosquitto-clients
      ```
    - **MacOS**:
      ```bash
-     brew install mosquitto
+     brew install mosquitto@2.0.12
      ```
 
+   To verify the installed version:
+   ```bash
+   mosquitto -v
+   ```
+
 3. **Dependencies Installation**
-   Install the required Python libraries using the `requirements.txt` file:
+   Install the required Python libraries:
    ```bash
    pip install -r requirements.txt
    ```
@@ -36,22 +56,19 @@ This project implements a real-time emotion detection system using AI models and
 ## Usage
 
 ### 1. Start Mosquitto Broker
-Ensure the Mosquitto MQTT broker is running:
-
+Run the Mosquitto MQTT broker with WebSocket support enabled (default port **8083**):
 ```bash
 mosquitto
 ```
 
 ### 2. Run the Emotion Detection Script
-The `emotion_demo.py` script is the core AI model for emotion detection. Run it as follows:
-
+Execute the `emotion_demo.py` script to start the emotion detection:
 ```bash
 python emotion_demo.py
 ```
 
 ### 3. Run the Result Display Script
-The `printResult.py` script subscribes to the MQTT topic and displays the emotion detection results:
-
+Run `printResult.py` to subscribe to the MQTT topic and display results:
 ```bash
 python printResult.py
 ```
@@ -60,43 +77,64 @@ python printResult.py
 
 ## File Details
 
-- **`emotion_demo.py`**: Implements the AI model to detect emotions using a pre-trained model (`emotion_detection.h5`) and Haar Cascade classifier (`haarcascade_frontalface_default.xml`). Publishes results via MQTT.
+- **`emotion_demo.py`**:
+  - Loads a pre-trained model (`emotion_detection.h5`) and uses a Haar Cascade classifier (`haarcascade_frontalface_default.xml`) for face detection.
+  - Publishes results via MQTT.
+  - Update the absolute path to the model if necessary:
+    ```python
+    classifier = load_model('C:/Users/manhh/Downloads/emotion detect/emotion_detection.h5')
+    ```
 
-  **Note:** Update the absolute path to the model in the script if needed:
-  ```python
-  classifier = load_model('C:/Users/manhh/Downloads/emotion detect/emotion_detection.h5')
-  ```
-
-- **`printResult.py`**: Subscribes to the MQTT topic and prints the detected emotions.
+- **`printResult.py`**:
+  - Subscribes to the MQTT topic (e.g., `emotion/topic`) to print detected emotions.
+  - Also receives control commands via the MQTT WebSocket port **8083** to execute specific tasks.
 
 - **`emotion_detection.h5`**: Pre-trained model for emotion classification.
 
 - **`haarcascade_frontalface_default.xml`**: Haar Cascade XML for face detection.
 
-- **`requirements.txt`**: Contains a list of Python dependencies for the project.
+- **`requirements.txt`**: Python dependencies for the project.
 
 ---
 
 ## Troubleshooting
 
 1. **Mosquitto not running:**
-   Ensure the Mosquitto broker is installed and running. Use the command:
+   Ensure Mosquitto version 2.0.12 is installed and running:
    ```bash
    mosquitto
    ```
 
-2. **Missing dependencies:**
-   Reinstall the dependencies with:
+2. **WebSocket issues:**
+   Verify that Mosquitto is configured to listen on port **8083**. Check the configuration file (usually located at `/etc/mosquitto/mosquitto.conf`) and ensure it includes:
+   ```plaintext
+   listener 8083
+   protocol websockets
+   ```
+
+3. **Missing dependencies:**
+   Reinstall the dependencies:
    ```bash
    pip install -r requirements.txt
    ```
 
-3. **FileNotFoundError:**
-   Make sure all required files (`emotion_detection.h5`, `haarcascade_frontalface_default.xml`) are in the same directory as the scripts.
+4. **FileNotFoundError:**
+   Verify all required files (`emotion_detection.h5`, `haarcascade_frontalface_default.xml`) are in the correct directory.
+
+---
+
+## Example Output
+
+**From `printResult.py`:**
+```
+Detected emotion: Happy
+Detected emotion: Sad
+Received control command: Reset
+```
 
 ---
 
 ## License
 
- Feel free to use and modify this file as needed.
+Feel free to use and modify this file as needed.
 
