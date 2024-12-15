@@ -1,166 +1,132 @@
-import paho.mqtt.client as mqtt
 import json
-import serial
 import time
+import threading
+import paho.mqtt.client as mqtt
 
 # --------------------- Configuration ---------------------
-# MQTT Configuration
-BROKER = "localhost"  # Change to your broker's IP if needed
-PORT = 1883
-TOPIC = "emotion_topic"
+# MQTT Configuration (TCP - Local)
+BROKER = "localhost"  # MQTT Broker địa chỉ (TCP)
+MQTT_PORT = 1883
+MQTT_TOPIC = "emotion_topic"
 
-# Serial Configuration
-SERIAL_PORT = "COM7"  # Replace with your serial port
-BAUD_RATE = 9600      # Ensure this matches the baud rate of your serial device
-# ----------------------------------------------------------
+# WebSocket MQTT Configuration
+WS_BROKER = "broker.emqx.io"
+WS_PORT = 8083
 
-# Initialize Serial Connection
-try:
-    ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
-    time.sleep(2)  # Wait for the serial connection to initialize
-    print(f"Connected to serial port {SERIAL_PORT} at {BAUD_RATE} baud.")
-except serial.SerialException as e:
-    print(f"Error connecting to serial port: {e}")
-    ser = None  # Handle absence of serial connection gracefully
+# Biến quản lý
+receive_from_mqtt = False  # Ban đầu chỉ nghe từ WebSocket broker
+# Khi nhận "switch_to_mqtt" từ WebSocket broker, chuyển sang nghe MQTT local.
 
-# Variable to store current light settings
-current_light_settings = {
-    "brightness": 100,   # Default brightness
-    "color": "white",    # Default color
-    "status": "on"       # Default status
-}
+mqtt_client = None
+ws_mqtt_client = None
 
-# Function to send data via serial
-def send_via_serial(data):
-    if ser and ser.is_open:
+# --------------------- Callbacks --------------------
+
+def on_message_mqtt(client, userdata, msg):
+    global receive_from_mqtt
+    # Nếu đang ở chế độ nhận từ MQTT local thì xử lý, nếu không thì bỏ qua
+    if receive_from_mqtt:
         try:
-            json_data = json.dumps(data)
-            ser.write((json_data + "\n").encode())  # Send as JSON string with newline
-            print(f"Sent via serial: {json_data}")
-        except serial.SerialException as e:
-            print(f"Error sending data via serial: {e}")
-    else:
-        print("Serial port is not open. Cannot send data.")
-
-# Callback function when a message is received
-def on_message(client, userdata, msg):
-    try:
-        # Print the raw received message
-        print(f"Raw message received: {msg.payload}")
-
-        # Decode the JSON message
-        decoded_msg = msg.payload.decode().strip()
-        print(f"Decoded message: {decoded_msg}")
-
-        # Check if the message is empty or invalid
-        if not decoded_msg:
-            print("Received empty or invalid message, skipping.")
-            return
-
-        # Parse JSON
-        try:
+            decoded_msg = msg.payload.decode().strip()
+            print(f"[MQTT LOCAL] Message received on {msg.topic}: {decoded_msg}")
+            # Parse JSON
             emotion_data = json.loads(decoded_msg)
+            emotion = emotion_data.get("emotion", "")
+            print(f"[MQTT LOCAL] Processed Emotion: {emotion}")
         except json.JSONDecodeError as e:
-            print(f"Error decoding JSON: {e}")
-            return
+            print(f"[MQTT LOCAL] Error decoding message: {e}")
+        except Exception as e:
+            print(f"[MQTT LOCAL] Error processing message: {e}")
+    else:
+        print("[MQTT LOCAL] Ignoring messages (WebSocket mode active).")
 
-        # Validate fields in the message
-        source = emotion_data.get("source")
-        msg_type = emotion_data.get("type")
-        emotion = emotion_data.get("emotion", "")  # Ensure emotion is a string
 
-        if source != "ai" or msg_type != "emotion":
-            print(f"Message source/type invalid: source={source}, type={msg_type}. Skipping.")
-            return
+def on_message_ws(client, userdata, msg):
+    global receive_from_mqtt
+    try:
+        decoded_msg = msg.payload.decode().strip()
+        parsed_message = json.loads(decoded_msg)
 
-        # Validate emotion
-        if not emotion:
-            print("Emotion is empty or invalid, skipping.")
-            return
+        source = parsed_message.get("source", "")
+        ai_value = parsed_message.get("ai", None)
 
-        print(f"Decoded emotion: {emotion}")
-
-        # Determine new light settings based on emotion
-        new_light_settings = {}
-
-        if emotion == "Happy":
-            new_light_settings = {
-                "brightness": 255,   # Maximum brightness
-                "color": "green",   # Bright green color
-                "status": "on"
-            }
-        elif emotion == "Sad":
-            new_light_settings = {
-                "brightness": 50,    # Low brightness
-                "color": "blue",     # Blue color
-                "status": "on"
-            }
-        elif emotion == "Angry":
-            new_light_settings = {
-                "brightness": 255,   # Maximum brightness
-                "color": "red",      # Red color
-                "status": "on"
-            }
-        elif emotion == "Surprised":
-            new_light_settings = {
-                "brightness": 255,   # Maximum brightness
-                "color": "yellow",   # Yellow color
-                "status": "on"
-            }
-        elif emotion == "Neutral":
-            new_light_settings = {
-                "brightness": 100,   # Medium brightness
-                "color": "white",    # White color
-                "status": "on"
-            }
+        # Kiểm tra có phải lệnh điều khiển không
+        if source == "web" and ai_value is not None:
+            # Đây là lệnh điều khiển bật/tắt AI mode (1883)
+            if str(ai_value).lower() == "true":
+                receive_from_mqtt = True
+                print("[MQTT WS] Switching to MQTT (1883) mode (ai = true).")
+            else:
+                receive_from_mqtt = False
+                print("[MQTT WS] Switching to WebSocket (8083) mode (ai = false).")
         else:
-            print(f"Unrecognized emotion: {emotion}, skipping.")
-            return
+            # Không phải lệnh điều khiển, là dữ liệu thường
+            if not receive_from_mqtt:
+                # Chỉ forward sang MQTT local nếu đang ở chế độ WS
+                if mqtt_client:
+                    mqtt_client.publish(MQTT_TOPIC, json.dumps(parsed_message))
+                    print(f"[MQTT WS] Forwarded message to MQTT local: {parsed_message}")
+            else:
+                # Nếu đang ở chế độ 1883, bỏ qua tin nhắn dữ liệu thường
+                # nhưng KHÔNG bỏ qua lệnh điều khiển (đã xử lý ở trên).
+                pass
 
-        # Check if there is a change in light settings
-        if new_light_settings != current_light_settings:
-            # Update current settings
-            current_light_settings.update(new_light_settings)
-
-            # Send the new settings via serial
-            send_via_serial(new_light_settings)
-        else:
-            print("No change in light settings, nothing to send.")
-
+    except json.JSONDecodeError as e:
+        print(f"[MQTT WS] Error decoding message: {e}")
     except Exception as e:
-        print(f"Error processing message: {e}")
+        print(f"[MQTT WS] Error processing message: {e}")
 
-# Initialize MQTT Client
-client = mqtt.Client()
-client.on_message = on_message
 
-# Connect to MQTT Broker and Subscribe to Topic
-try:
-    client.connect(BROKER, PORT, 60)
-    client.subscribe(TOPIC)
-    print("Subscribed to MQTT topic and listening for emotions...")
-except Exception as e:
-    print(f"Error connecting to MQTT broker: {e}")
-    if ser and ser.is_open:
-        ser.close()
-    exit(1)
+# --------------------- Setup Functions --------------------
+def setup_mqtt_local():
+    client = mqtt.Client()
+    client.on_message = on_message_mqtt
+    try:
+        client.connect(BROKER, MQTT_PORT, keepalive=60)
+        client.subscribe(MQTT_TOPIC)
+        print(f"Subscribed to MQTT (TCP) topic: {MQTT_TOPIC}")
+        return client
+    except Exception as e:
+        print(f"Error connecting to MQTT broker (TCP): {e}")
+        return None
 
-# Start MQTT Loop in a Separate Thread
-client.loop_start()
+def setup_mqtt_ws():
+    client = mqtt.Client(transport="websockets")
+    client.on_message = on_message_ws
+    try:
+        client.connect(WS_BROKER, WS_PORT, keepalive=60)
+        client.subscribe(MQTT_TOPIC)
+        print(f"Subscribed to MQTT (WebSocket) topic: {MQTT_TOPIC}")
+        return client
+    except Exception as e:
+        print(f"Error connecting to MQTT broker (WS): {e}")
+        return None
 
-print("Listening for emotions... Press Ctrl+C to exit.")
+# --------------------- Main Execution --------------------
+if __name__ == "__main__":
+    # MQTT local client
+    mqtt_client = setup_mqtt_local()
+    if mqtt_client:
+        mqtt_thread = threading.Thread(target=mqtt_client.loop_forever)
+        mqtt_thread.daemon = True
+        mqtt_thread.start()
 
-# Keep the main thread alive to allow continuous listening
-try:
-    while True:
-        time.sleep(1)  # Sleep to reduce CPU usage
-except KeyboardInterrupt:
-    print("\nProgram interrupted by user. Exiting...")
-finally:
-    # Clean up resources
-    if ser and ser.is_open:
-        ser.close()
-        print(f"Closed serial port {SERIAL_PORT}.")
-    client.loop_stop()
-    client.disconnect()
-    print("Disconnected from MQTT broker.")
+    # MQTT WebSocket client
+    ws_mqtt_client = setup_mqtt_ws()
+    if ws_mqtt_client:
+        ws_mqtt_thread = threading.Thread(target=ws_mqtt_client.loop_forever)
+        ws_mqtt_thread.daemon = True
+        ws_mqtt_thread.start()
+
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("Program interrupted by user. Exiting...")
+    finally:
+        if mqtt_client:
+            mqtt_client.disconnect()
+            print("Disconnected from MQTT (TCP).")
+        if ws_mqtt_client:
+            ws_mqtt_client.disconnect()
+            print("Disconnected from MQTT (WebSocket).")
