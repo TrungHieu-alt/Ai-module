@@ -1,8 +1,9 @@
 import json
 import time
 import threading
+import serial  # Thêm thư viện pyserial
 import paho.mqtt.client as mqtt
-import serial
+import queue
 
 # --------------------- Configuration ---------------------
 # MQTT Configuration (TCP - Local)
@@ -13,6 +14,7 @@ MQTT_TOPIC = "emotion_topic"
 # WebSocket MQTT Configuration
 WS_BROKER = "broker.emqx.io"
 WS_PORT = 8083
+WEBSOCKET_UPDATE_TOPIC = "emotion_updates"  # Chủ đề để gửi cập nhật tới web
 
 # Biến quản lý
 receive_from_mqtt = False  # Ban đầu chỉ nghe từ WebSocket broker
@@ -34,6 +36,19 @@ def on_message_mqtt(client, userdata, msg):
             emotion_data = json.loads(decoded_msg)
             emotion = emotion_data.get("emotion", "")
             print(f"[MQTT LOCAL] Processed Emotion: {emotion}")
+            
+            # Đưa dữ liệu vào hàng đợi để xử lý serial
+            userdata['queue'].put(emotion_data)
+            
+            # Ánh xạ cảm xúc thành màu sắc và cường độ sáng
+            mapped_data = map_emotion_to_color_brightness(emotion)
+            print(f"[Mapping] Emotion '{emotion}' mapped to {mapped_data}")
+            
+            # Gửi dữ liệu màu sắc và cường độ sáng qua WebSocket để cập nhật giao diện web
+            if ws_mqtt_client:
+                ws_mqtt_client.publish(WEBSOCKET_UPDATE_TOPIC, json.dumps(mapped_data))
+                print(f"[WebSocket] Sent update to web: {mapped_data}")
+                
         except json.JSONDecodeError as e:
             print(f"[MQTT LOCAL] Error decoding message: {e}")
         except Exception as e:
@@ -77,10 +92,9 @@ def on_message_ws(client, userdata, msg):
     except Exception as e:
         print(f"[MQTT WS] Error processing message: {e}")
 
-
 # --------------------- Setup Functions --------------------
-def setup_mqtt_local():
-    client = mqtt.Client()
+def setup_mqtt_local(queue):
+    client = mqtt.Client(userdata={'queue': queue})
     client.on_message = on_message_mqtt
     try:
         client.connect(BROKER, MQTT_PORT, keepalive=60)
@@ -90,6 +104,7 @@ def setup_mqtt_local():
     except Exception as e:
         print(f"Error connecting to MQTT broker (TCP): {e}")
         return None
+
 
 def setup_mqtt_ws():
     client = mqtt.Client(transport="websockets")
@@ -103,9 +118,7 @@ def setup_mqtt_ws():
         print(f"Error connecting to MQTT broker (WS): {e}")
         return None
 
-
-
-# -------------------- Serial Functions --------------------
+# --------------------- New Functions for Serial Communication --------------------
 
 def map_emotion_to_color_brightness(emotion):
     """
@@ -122,6 +135,7 @@ def map_emotion_to_color_brightness(emotion):
     }
     return emotion_mapping.get(emotion, {'color': {'r': 255, 'g': 255, 'b': 255}, 'brightness': 50})
 
+
 def send_color(color, ser):
     """
     Gửi dữ liệu màu sắc qua cổng serial.
@@ -130,6 +144,7 @@ def send_color(color, ser):
     color_str = f"COLOR:{color['r']},{color['g']},{color['b']}\n"
     ser.write(color_str.encode())
     print(f"[Serial] Sent color: {color_str.strip()}")
+
 
 def send_brightness(brightness, ser):
     """
@@ -141,7 +156,6 @@ def send_brightness(brightness, ser):
     print(f"[Serial] Sent brightness: {brightness_str.strip()}")
 
 
-# Hàm gửi chính
 def process_decoded_data_serial(decoded_data, ser):
     """
     Xử lý dữ liệu đã decode và gửi qua serial.
@@ -164,7 +178,6 @@ def process_decoded_data_serial(decoded_data, ser):
     else:
         print(f"[Serial] Unsupported data type: {data_type}")
 
-import queue
 
 def serial_sender(ser, q):
     """
@@ -181,7 +194,6 @@ def serial_sender(ser, q):
 
 # --------------------- Main Execution --------------------
 if __name__ == "__main__":
-
     # Khởi tạo cổng serial COM7 với baudrate 9600 (có thể thay đổi theo yêu cầu)
     try:
         ser = serial.Serial('COM7', 9600, timeout=1)
@@ -195,7 +207,7 @@ if __name__ == "__main__":
     q = queue.Queue()
 
     # MQTT local client
-    mqtt_client = setup_mqtt_local()
+    mqtt_client = setup_mqtt_local(q)
     if mqtt_client:
         mqtt_thread = threading.Thread(target=mqtt_client.loop_forever)
         mqtt_thread.daemon = True
@@ -207,12 +219,12 @@ if __name__ == "__main__":
         ws_mqtt_thread = threading.Thread(target=ws_mqtt_client.loop_forever)
         ws_mqtt_thread.daemon = True
         ws_mqtt_thread.start()
-        
+
     # Khởi động luồng gửi serial nếu cổng serial đã kết nối
     if ser:
         serial_thread = threading.Thread(target=serial_sender, args=(ser, q))
         serial_thread.daemon = True
-        serial_thread.start()    
+        serial_thread.start()
 
     try:
         while True:
@@ -220,6 +232,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("Program interrupted by user. Exiting...")
     finally:
+        # Đóng các kết nối MQTT
         if mqtt_client:
             mqtt_client.disconnect()
             print("Disconnected from MQTT (TCP).")
