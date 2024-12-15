@@ -91,7 +91,7 @@ def on_message_ws(client, userdata, msg):
         print(f"[MQTT WS] Error decoding message: {e}")
     except Exception as e:
         print(f"[MQTT WS] Error processing message: {e}")
-
+        
 # --------------------- Setup Functions --------------------
 def setup_mqtt_local(queue):
     client = mqtt.Client(userdata={'queue': queue})
@@ -125,15 +125,16 @@ def map_emotion_to_color_brightness(emotion):
     Ánh xạ cảm xúc về màu sắc và cường độ sáng.
     """
     emotion_mapping = {
-        'Angry': {'color': {'r': 255, 'g': 0, 'b': 0}, 'brightness': 100},
-        'Disgusted': {'color': {'r': 0, 'g': 255, 'b': 0}, 'brightness': 80},
-        'Fear': {'color': {'r': 0, 'g': 0, 'b': 255}, 'brightness': 70},
-        'Happy': {'color': {'r': 255, 'g': 255, 'b': 0}, 'brightness': 90},
-        'Sad': {'color': {'r': 0, 'g': 0, 'b': 128}, 'brightness': 60},
-        'Surprised': {'color': {'r': 255, 'g': 105, 'b': 180}, 'brightness': 85},
-        'Neutral': {'color': {'r': 255, 'g': 255, 'b': 255}, 'brightness': 50}
+        'Angry': {'color': '#FF0000', 'brightness': 100},
+        'Disgusted': {'color': '#00FF00', 'brightness': 80},
+        'Fear': {'color': '#0000FF', 'brightness': 70},
+        'Happy': {'color': '#FFFF00', 'brightness': 90},
+        'Sad': {'color': '#000080', 'brightness': 60},
+        'Surprised': {'color': '#FF69B4', 'brightness': 85},
+        'Neutral': {'color': '#FFFFFF', 'brightness': 50}
     }
-    return emotion_mapping.get(emotion, {'color': {'r': 255, 'g': 255, 'b': 255}, 'brightness': 50})
+    return emotion_mapping.get(emotion, {'color': '#FFFFFF', 'brightness': 50})
+
 
 
 def send_color(color, ser):
@@ -141,7 +142,7 @@ def send_color(color, ser):
     Gửi dữ liệu màu sắc qua cổng serial.
     Định dạng: COLOR:r,g,b\n
     """
-    color_str = f"COLOR:{color['r']},{color['g']},{color['b']}\n"
+    color_str = f"COLOR:{color}\n"
     ser.write(color_str.encode())
     print(f"[Serial] Sent color: {color_str.strip()}")
 
