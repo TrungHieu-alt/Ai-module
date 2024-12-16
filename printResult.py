@@ -129,8 +129,8 @@ def map_emotion_to_color_brightness(emotion):
         'Disgusted': {'color': '#00FF00', 'brightness': 80},
         'Fear': {'color': '#0000FF', 'brightness': 70},
         'Happy': {'color': '#FFFF00', 'brightness': 90},
-        'Sad': {'color': '#000080', 'brightness': 60},
-        'Surprised': {'color': '#FF69B4', 'brightness': 85},
+        'Sad': {'color': '#0000FF', 'brightness': 60},
+        'Surprised': {'color': '#FF00FF', 'brightness': 85},
         'Neutral': {'color': '#FFFFFF', 'brightness': 50}
     }
     return emotion_mapping.get(emotion, {'color': '#FFFFFF', 'brightness': 50})
@@ -139,22 +139,28 @@ def map_emotion_to_color_brightness(emotion):
 
 def send_color(color, ser):
     """
-    Gửi dữ liệu màu sắc qua cổng serial.
-    Định dạng: COLOR:r,g,b\n
+    Gửi dữ liệu màu sắc qua cổng serial dưới dạng JSON.
+    Định dạng: {"type":"color","value":"#RRGGBB"}\n
     """
-    color_str = f"COLOR:{color}\n"
-    ser.write(color_str.encode())
-    print(f"[Serial] Sent color: {color_str.strip()}")
+    try:
+        json_str = json.dumps({"type": "color", "value": color}) + "\n"
+        ser.write(json_str.encode())
+        print(f"[Serial] Sent color: {json_str.strip()}")
+    except Exception as e:
+        print(f"[Serial] Error sending color: {e}")
 
 
 def send_brightness(brightness, ser):
     """
-    Gửi dữ liệu cường độ sáng qua cổng serial.
-    Định dạng: BRIGHTNESS:value\n
+    Gửi dữ liệu cường độ sáng qua cổng serial dưới dạng JSON.
+    Định dạng: {"type":"brightness","value":value}\n
     """
-    brightness_str = f"BRIGHTNESS:{brightness}\n"
-    ser.write(brightness_str.encode())
-    print(f"[Serial] Sent brightness: {brightness_str.strip()}")
+    try:
+        json_str = json.dumps({"type": "brightness", "value": brightness}) + "\n"
+        ser.write(json_str.encode())
+        print(f"[Serial] Sent brightness: {json_str.strip()}")
+    except Exception as e:
+        print(f"[Serial] Error sending brightness: {e}")
 
 
 def process_decoded_data_serial(decoded_data, ser):
